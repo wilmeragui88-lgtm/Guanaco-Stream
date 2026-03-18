@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Guanaco Stream 🇸🇻</title>
+    
+    <link rel="manifest" href="data:application/manifest+json,{%22name%22:%22Guanaco%20Stream%22,%22short_name%22:%22GuanacoStream%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22#001f3f%22,%22theme_color%22:%22#0074D9%22}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/192/0074D9/FFFFFF?text=GS">
+
+    <style>
+        :root { 
+            --sv-blue: #0047AB; 
+            --accent: #00d2ff; 
+            --danger: #ff4136; 
+            --dark: #010101; 
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Roboto, sans-serif; 
+            background: var(--dark); 
+            color: white; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            overflow: hidden;
+        }
+        
+        header { 
+            padding: 15px; 
+            text-align: center; 
+            background: linear-gradient(90deg, var(--sv-blue), #002d6b);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            font-size: 1.2em;
+            letter-spacing: 1px;
+        }
+
+        .main-layout { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 10px; 
+        }
+        
+        canvas { 
+            background: #000; 
+            max-width: 100%; 
+            border-radius: 12px; 
+            border: 3px solid #1a1a1a; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.9);
+        }
+        
+        .controls { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 12px; 
+            width: 100%; 
+            max-width: 450px; 
+            margin-top: 20px;
+        }
+        
+        button { 
+            padding: 16px; 
+            border: none; 
+            border-radius: 12px; 
+            font-weight: 800; 
+            color: white; 
+            cursor: pointer; 
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+        }
+
+        button:active { transform: translateY(2px); box-shadow: none; }
+        
+        #btn-start { background: #2ECC40; grid-column: span 2; font-size: 1.1em; }
+        #btn-flip { background: #0074D9; }
+        #btn-stop { background: var(--danger); }
+        
+        .audio-wrapper { width: 100%; max-width: 450px; margin-top: 15px; }
+        .audio-meter { height: 10px; background: #222; border-radius: 5px; overflow: hidden; }
+        #vol-bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.1s; }
+        
+        video { display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        🇸🇻 <strong>GUANACO STREAM</strong> STUDIO
+    </header>
+
+    <div class="main-layout">
+        <canvas id="main-canvas" width="1280" height="720"></canvas>
+        
+        <div class="audio-wrapper">
+            <small>NIVEL DE AUDIO</small>
+            <div class="audio-meter">
+                <div id="vol-bar"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="btn-start">🚀 EMPEZAR EN VIVO</button>
+            <button id="btn-flip">🔄 CAMBIAR CÁMARA</button>
+            <button id="btn-stop">⏹ DETENER</button>
+        </div>
+    </div>
+
+    <video id="v-cam" autoplay playsinline muted></video>
+    <video id="v-screen" autoplay playsinline muted></video>
+
+    <script>
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const vCam = document.getElementById('v-cam');
+        const vScreen = document.getElementById('v-screen');
+        
+        const btnStart = document.getElementById('btn-start');
+        const btnFlip = document.getElementById('btn-flip');
+        const btnStop = document.getElementById('btn-stop');
+        const volBar = document.getElementById('vol-bar');
+
+        let audioCtx, analyzer, dataArray;
+        let isRunning = false;
+        let currentFacingMode = "user"; 
+
+        async function startStudio() {
+            try {
+                const camStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode, width: 1280, height: 720 },
+                    audio: true
+                });
+                vCam.srcObject = camStream;
+
+                try {
+                    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    vScreen.srcObject = screenStream;
+                } catch (e) { console.log("Modo solo cámara"); }
+
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(camStream);
+                analyzer = audioCtx.createAnalyser();
+                source.connect(analyzer);
+                dataArray = new Uint8Array(analyzer.frequencyBinCount);
+
+                isRunning = true;
+                btnStart.style.display = 'none';
+                render();
+            } catch (err) {
+                alert("Para usar Guanaco Stream, activa los permisos de cámara y usa HTTPS.");
+            }
+        }
+
+        function render() {
+            if (!isRunning) return;
+
+            // 1. Fondo
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Pantalla
+            if (vScreen.srcObject) {
+                ctx.drawImage(vScreen, 0, 0, canvas.width, canvas.height);
+            }
+
+            // 3. Cámara con marco moderno
+            if (vCam.readyState >= 2) {
+                const size = 320;
+                const x = 40;
+                const y = canvas.height - size - 40;
+
+                ctx.save();
+                // Sombra de la cámara
+                ctx.shadowColor = "rgba(0,0,0,0.5)";
+                ctx.shadowBlur = 20;
+                
+                // Círculo
+                ctx.beginPath();
+                ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(vCam, x, y, size, size);
+                ctx.restore();
+                
+                // Borde Estilo El Salvador
+                ctx.strokeStyle = "#00d2ff";
+                ctx.lineWidth = 8;
+                ctx.stroke();
+            }
+
+            // 4. Marca de Agua / Logo "Guanaco Stream"
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.roundRect(canvas.width - 280, 40, 240, 60, 10);
+            ctx.fill();
+            
+            ctx.fillStyle = "white";
+            ctx.font = "bold 24px sans-serif";
+            ctx.fillText("🇸🇻 GUANACO STREAM", canvas.width - 265, 78);
+
+            // 5. Audio
+            if (analyzer) {
+                analyzer.getByteFrequencyData(dataArray);
+                let average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                volBar.style.width = Math.min(average * 2.5, 100) + "%";
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        async function flipCamera() {
+            currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
+            if (vCam.srcObject) vCam.srcObject.getTracks().forEach(t => t.stop());
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacingMode, width: 1280, height: 720 },
+                audio: true
+            });
+            vCam.srcObject = stream;
+        }
+
+        btnStart.onclick = startStudio;
+        btnFlip.onclick = flipCamera;
+        btnStop.onclick = () => location.reload();
+
+        // Service Worker Inline
+        if ('serviceWorker' in navigator) {
+            const sw = `self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));`;
+            const blob = new Blob([sw], {type: 'text/javascript'});
+            navigator.serviceWorker.register(URL.createObjectURL(blob));
+        }
+    </script>
+</body>
+</html>
