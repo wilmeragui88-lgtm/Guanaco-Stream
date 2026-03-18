@@ -5,17 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Guanaco Stream 🇸🇻</title>
     
-    <link rel="manifest" href="data:application/manifest+json,{%22name%22:%22Guanaco%20Stream%22,%22short_name%22:%22GuanacoStream%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22#001f3f%22,%22theme_color%22:%22#0074D9%22}">
+    <link rel="manifest" href="data:application/manifest+json,{%22name%22:%22Guanaco%20Stream%22,%22short_name%22:%22GuanacoStream%22,%22display%22:%22standalone%22,%22background_color%22:%22#010101%22,%22theme_color%22:%22#0047AB%22}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://via.placeholder.com/192/0074D9/FFFFFF?text=GS">
 
     <style>
         :root { 
             --sv-blue: #0047AB; 
             --accent: #00d2ff; 
             --danger: #ff4136; 
-            --dark: #010101; 
+            --dark: #0a0a0a;
+            --panel: #1a1a1a;
         }
         
         body { 
@@ -28,86 +28,137 @@
             height: 100vh; 
             overflow: hidden;
         }
-        
+
+        /* --- HEADER & SIDEBAR --- */
         header { 
             padding: 15px; 
-            text-align: center; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             background: linear-gradient(90deg, var(--sv-blue), #002d6b);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-            font-size: 1.2em;
-            letter-spacing: 1px;
+            z-index: 10;
         }
 
-        .main-layout { 
-            flex: 1; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            padding: 10px; 
+        .menu-btn { font-size: 24px; cursor: pointer; background: none; border: none; color: white; }
+
+        .sidebar {
+            position: fixed;
+            left: -300px;
+            top: 0;
+            width: 280px;
+            height: 100%;
+            background: var(--panel);
+            transition: 0.3s;
+            z-index: 100;
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
+
+        .sidebar.active { left: 0; }
+
+        .sidebar h2 { color: var(--accent); font-size: 1.2em; border-bottom: 1px solid #333; padding-bottom: 10px; }
+
+        /* --- INPUTS --- */
+        .input-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 0.8em; color: #aaa; }
+        input, select { 
+            padding: 12px; 
+            background: #222; 
+            border: 1px solid #444; 
+            color: white; 
+            border-radius: 6px; 
+        }
+
+        /* --- MAIN LAYOUT --- */
+        .main-layout { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
         
         canvas { 
             background: #000; 
             max-width: 100%; 
             border-radius: 12px; 
-            border: 3px solid #1a1a1a; 
-            box-shadow: 0 8px 32px rgba(0,0,0,0.9);
+            border: 2px solid #333; 
         }
         
         .controls { 
             display: grid; 
             grid-template-columns: 1fr 1fr; 
-            gap: 12px; 
+            gap: 10px; 
             width: 100%; 
             max-width: 450px; 
-            margin-top: 20px;
+            margin-top: 15px;
         }
         
-        button { 
-            padding: 16px; 
-            border: none; 
-            border-radius: 12px; 
-            font-weight: 800; 
-            color: white; 
-            cursor: pointer; 
-            transition: all 0.2s;
-            box-shadow: 0 4px 0 rgba(0,0,0,0.2);
-        }
-
-        button:active { transform: translateY(2px); box-shadow: none; }
-        
+        button { padding: 14px; border: none; border-radius: 10px; font-weight: bold; color: white; cursor: pointer; }
         #btn-start { background: #2ECC40; grid-column: span 2; font-size: 1.1em; }
-        #btn-flip { background: #0074D9; }
+        #btn-flip { background: var(--sv-blue); }
         #btn-stop { background: var(--danger); }
         
-        .audio-wrapper { width: 100%; max-width: 450px; margin-top: 15px; }
-        .audio-meter { height: 10px; background: #222; border-radius: 5px; overflow: hidden; }
+        .audio-meter { width: 100%; height: 6px; background: #222; border-radius: 3px; margin-top: 10px; overflow: hidden; }
         #vol-bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.1s; }
         
         video { display: none; }
+        .overlay-close { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; z-index: 90; }
+        .overlay-close.active { display: block; }
     </style>
 </head>
 <body>
 
+    <div class="overlay-close" id="overlay"></div>
+
+    <div class="sidebar" id="sidebar">
+        <h2>⚙️ Configuración</h2>
+        
+        <div class="input-group">
+            <label>Plataforma</label>
+            <select id="platform">
+                <option value="youtube">YouTube Live</option>
+                <option value="facebook">Facebook Live</option>
+                <option value="twitch">Twitch</option>
+                <option value="custom">Personalizado (RTMP)</option>
+            </select>
+        </div>
+
+        <div class="input-group">
+            <label>Server URL</label>
+            <input type="text" id="rtmp-url" placeholder="rtmp://a.rtmp.youtube.com/live2">
+        </div>
+
+        <div class="input-group">
+            <label>Stream Key</label>
+            <input type="password" id="stream-key" placeholder="xxxx-xxxx-xxxx-xxxx">
+        </div>
+
+        <div class="input-group">
+            <label>Calidad de Video</label>
+            <select id="quality">
+                <option value="720">720p (HD)</option>
+                <option value="1080">1080p (Full HD)</option>
+                <option value="480">480p (SD)</option>
+            </select>
+        </div>
+
+        <button onclick="toggleMenu()" style="background: #444; margin-top: 20px;">Cerrar y Guardar</button>
+    </div>
+
     <header>
-        🇸🇻 <strong>GUANACO STREAM</strong> STUDIO
-    </header>
+        <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        <strong>GUANACO STREAM</strong>
+        <div style="width: 30px;"></div> </header>
 
     <div class="main-layout">
         <canvas id="main-canvas" width="1280" height="720"></canvas>
         
-        <div class="audio-wrapper">
-            <small>NIVEL DE AUDIO</small>
-            <div class="audio-meter">
-                <div id="vol-bar"></div>
-            </div>
+        <div class="audio-meter" style="max-width:450px;">
+            <div id="vol-bar"></div>
         </div>
 
         <div class="controls">
-            <button id="btn-start">🚀 EMPEZAR EN VIVO</button>
-            <button id="btn-flip">🔄 CAMBIAR CÁMARA</button>
-            <button id="btn-stop">⏹ DETENER</button>
+            <button id="btn-start">🚀 INICIAR PRODUCCIÓN</button>
+            <button id="btn-flip">🔄 CÁMARA</button>
+            <button id="btn-stop">⏹ PARAR</button>
         </div>
     </div>
 
@@ -115,122 +166,85 @@
     <video id="v-screen" autoplay playsinline muted></video>
 
     <script>
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
         const canvas = document.getElementById('main-canvas');
-        const ctx = canvas.getContext('2d', { alpha: false });
+        const ctx = canvas.getContext('2d');
         const vCam = document.getElementById('v-cam');
         const vScreen = document.getElementById('v-screen');
-        
-        const btnStart = document.getElementById('btn-start');
-        const btnFlip = document.getElementById('btn-flip');
-        const btnStop = document.getElementById('btn-stop');
         const volBar = document.getElementById('vol-bar');
 
-        let audioCtx, analyzer, dataArray;
         let isRunning = false;
-        let currentFacingMode = "user"; 
+        let currentFacingMode = "user";
+        let analyzer, dataArray;
+
+        function toggleMenu() {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+
+        overlay.onclick = toggleMenu;
 
         async function startStudio() {
             try {
-                const camStream = await navigator.mediaDevices.getUserMedia({
+                const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: currentFacingMode, width: 1280, height: 720 },
                     audio: true
                 });
-                vCam.srcObject = camStream;
+                vCam.srcObject = stream;
 
-                try {
-                    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                    vScreen.srcObject = screenStream;
-                } catch (e) { console.log("Modo solo cámara"); }
-
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioCtx.createMediaStreamSource(camStream);
+                // Audio Mixer
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(stream);
                 analyzer = audioCtx.createAnalyser();
                 source.connect(analyzer);
                 dataArray = new Uint8Array(analyzer.frequencyBinCount);
 
                 isRunning = true;
-                btnStart.style.display = 'none';
+                document.getElementById('btn-start').style.display = 'none';
                 render();
             } catch (err) {
-                alert("Para usar Guanaco Stream, activa los permisos de cámara y usa HTTPS.");
+                alert("Permisos de cámara requeridos.");
             }
         }
 
         function render() {
             if (!isRunning) return;
-
-            // 1. Fondo
             ctx.fillStyle = "#000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 2. Pantalla
-            if (vScreen.srcObject) {
-                ctx.drawImage(vScreen, 0, 0, canvas.width, canvas.height);
-            }
-
-            // 3. Cámara con marco moderno
+            // Capa Cámara
             if (vCam.readyState >= 2) {
-                const size = 320;
-                const x = 40;
-                const y = canvas.height - size - 40;
-
-                ctx.save();
-                // Sombra de la cámara
-                ctx.shadowColor = "rgba(0,0,0,0.5)";
-                ctx.shadowBlur = 20;
-                
-                // Círculo
-                ctx.beginPath();
-                ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
-                ctx.clip();
-                ctx.drawImage(vCam, x, y, size, size);
-                ctx.restore();
-                
-                // Borde Estilo El Salvador
-                ctx.strokeStyle = "#00d2ff";
-                ctx.lineWidth = 8;
-                ctx.stroke();
+                ctx.drawImage(vCam, 0, 0, canvas.width, canvas.height);
             }
 
-            // 4. Marca de Agua / Logo "Guanaco Stream"
-            ctx.fillStyle = "rgba(0,0,0,0.6)";
-            ctx.roundRect(canvas.width - 280, 40, 240, 60, 10);
-            ctx.fill();
-            
+            // Marca de Agua
+            ctx.fillStyle = "rgba(0,0,0,0.5)";
+            ctx.fillRect(canvas.width - 260, 30, 230, 50);
             ctx.fillStyle = "white";
-            ctx.font = "bold 24px sans-serif";
-            ctx.fillText("🇸🇻 GUANACO STREAM", canvas.width - 265, 78);
+            ctx.font = "bold 20px Arial";
+            ctx.fillText("🇸🇻 GUANACO STREAM", canvas.width - 245, 62);
 
-            // 5. Audio
+            // Vumetro
             if (analyzer) {
                 analyzer.getByteFrequencyData(dataArray);
-                let average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                volBar.style.width = Math.min(average * 2.5, 100) + "%";
+                let avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                volBar.style.width = Math.min(avg * 2.5, 100) + "%";
             }
 
             requestAnimationFrame(render);
         }
 
-        async function flipCamera() {
+        document.getElementById('btn-start').onclick = startStudio;
+        document.getElementById('btn-flip').onclick = async () => {
             currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
             if (vCam.srcObject) vCam.srcObject.getTracks().forEach(t => t.stop());
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: currentFacingMode, width: 1280, height: 720 },
-                audio: true
+            vCam.srcObject = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacingMode }, audio: true
             });
-            vCam.srcObject = stream;
-        }
+        };
+        document.getElementById('btn-stop').onclick = () => location.reload();
 
-        btnStart.onclick = startStudio;
-        btnFlip.onclick = flipCamera;
-        btnStop.onclick = () => location.reload();
-
-        // Service Worker Inline
-        if ('serviceWorker' in navigator) {
-            const sw = `self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));`;
-            const blob = new Blob([sw], {type: 'text/javascript'});
-            navigator.serviceWorker.register(URL.createObjectURL(blob));
-        }
     </script>
 </body>
 </html>
